@@ -1,0 +1,36 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # 1. The Redis Service
+  redis:
+    image: redis:7-alpine
+    container_name: rate-limit-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning --requirepass "devpassword"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+
+  # 2. Redis GUI (Optional but recommended for debugging)
+  redis-insight:
+    image: redis/redisinsight:latest
+    container_name: redis-insight
+    restart: always
+    ports:
+      - "5540:5540"
+    volumes:
+      - redis_insight_data:/db
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+  redis_insight_data:
