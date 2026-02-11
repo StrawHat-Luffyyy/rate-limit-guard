@@ -1,8 +1,9 @@
 import express from "express";
 import dotenv from "dotenv";
 import helmet from "helmet";
-import { v4, uuidv4 } from "uuid";
-import { logger } from "./config/logger.js";
+import { v4 as uuidv4 } from "uuid";
+import logger from "./config/logger.js";
+import { AppError, errorHandler } from "./middleware/errorHandler.js";
 
 const app = express();
 dotenv.config();
@@ -13,11 +14,9 @@ app.use(express.json());
 
 // Request ID & Basic Logging Middleware
 app.use((req, res, next) => {
-  req.id = uuidv4();
-  logger.info(`Incoming request`, {
+  req.id = uuidv4(); // Generate unique ID for tracing
+  logger.info(`Incoming Request: ${req.method} ${req.url}`, {
     requestId: req.id,
-    method: req.method,
-    url: req.url,
     ip: req.ip,
   });
   next();
@@ -28,10 +27,6 @@ app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok", timestamp: new Date() });
 });
 
-// Global error Handler
-app.use((err, req, res, next) => {
-  logger.error("Unhandled Error", { requestId: req.id, error: err.message });
-  res.status(500).json({ error: "Internal Server Error", requestId: req.id });
-});
-
+// Global Error Handler
+app.use(errorHandler);
 export default app;
