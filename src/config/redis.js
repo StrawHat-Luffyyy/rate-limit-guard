@@ -2,7 +2,7 @@ import Redis from "ioredis";
 import { config } from "./env.js";
 import logger from './logger.js'
 
-const logger = console; // Replace with your logging library if needed
+
 
 let redisClient;
 
