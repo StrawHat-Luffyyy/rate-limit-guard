@@ -7,7 +7,7 @@ import logger from "../config/logger.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-class tokenBucket {
+class TokenBucket {
   constructor() {
     // Load Lua script
     const scriptPath = path.join(__dirname, "../scripts/tokenBucket.lua");
@@ -54,4 +54,4 @@ class tokenBucket {
   }
 }
 
-export default new tokenBucket();
+export default new TokenBucket();
