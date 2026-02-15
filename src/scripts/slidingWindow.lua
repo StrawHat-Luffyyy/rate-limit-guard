@@ -7,8 +7,8 @@
 -- ARGV[4]: Unique Request ID
 
 local key = KEYS[1]
-local window = tonumber(ARGV[1]) 
-local limit = tonumber(ARGV[2])  
+local window = tonumber(ARGV[1])
+local limit = tonumber(ARGV[2])
 local now = tonumber(ARGV[3])
 local req_id = ARGV[4]
 
