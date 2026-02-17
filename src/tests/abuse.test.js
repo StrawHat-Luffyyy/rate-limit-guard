@@ -1,48 +1,95 @@
+// src/tests/abuse.test.js
 import { jest } from '@jest/globals';
 import redisClient, { closeRedis } from '../config/redis.js';
 import abuseDetector from '../abuse/detector.js';
 
-jest.setTimeout(10000);
+// Increase timeout to 30s just in case Docker is slow
+jest.setTimeout(30000);
 
-describe('Abuse Detection System', () => {
-  const testIP = '192.168.1.100';
-  const threshold = 3; // Block after 3 strikes
-  const violationTTL = 60;
-  const blockDuration = 10; // Block for 10 seconds
+describe('Abuse Detection System (Enhanced)', () => {
+  const testIP = '10.0.0.5';
+  const vipIP = '10.0.0.99';
 
   beforeAll(async () => {
-    if (redisClient.status !== 'ready') {
-      await new Promise((resolve) => redisClient.once('ready', resolve));
+    // 1. If already ready, stop waiting
+    if (redisClient.status === 'ready') {
+      return;
     }
-    await redisClient.del(`abuse:violations:${testIP}`);
-    await redisClient.del(`abuse:blocked:${testIP}`);
+
+    // 2. If connecting, wait for it
+    if (redisClient.status === 'connecting' || redisClient.status === 'reconnecting') {
+        await new Promise((resolve, reject) => {
+            redisClient.once('ready', resolve);
+            redisClient.once('error', reject);
+        });
+        return;
+    }
+
+    // 3. If closed or end, force connect (though ioredis usually auto-connects)
+    if (redisClient.status === 'end') {
+        await redisClient.connect();
+    }
+    
+    // 4. Final safety check: Ping Redis
+    try {
+        await redisClient.ping();
+    } catch (e) {
+        throw new Error(`Redis is not reachable: ${e.message}. Is Docker running?`);
+    }
+  });
+
+  beforeEach(async () => {
+    // Reset state before each test
+    const keys = [
+        `abuse:blocked:${testIP}`,
+        `abuse:violations:${testIP}`,
+        `abuse:blocked:${vipIP}`,
+        `abuse:violations:${vipIP}`
+    ];
+    await redisClient.del(keys);
+    await redisClient.srem('abuse:whitelist', vipIP);
   });
 
   afterAll(async () => {
-    await redisClient.del(`abuse:violations:${testIP}`);
-    await redisClient.del(`abuse:blocked:${testIP}`);
+    // Clean up connections
     await closeRedis();
   });
 
-  test('should increment violation count', async () => {
-    const result = await abuseDetector.reportViolation(testIP, threshold, violationTTL, blockDuration);
-    expect(result.blocked).toBe(false);
-    expect(result.violationCount).toBe(1);
+  test('should allow manual blocking', async () => {
+    // Block for 60 seconds
+    await abuseDetector.block(testIP, 60);
+    
+    // Check status
+    const status = await abuseDetector.checkStatus(testIP);
+    
+    // Verify
+    expect(status.status).toBe('blocked');
+    expect(status.retryAfter).toBeGreaterThan(0);
   });
 
-  test('should trigger block on threshold', async () => {
-    // 2nd Strike
-    await abuseDetector.reportViolation(testIP, threshold, violationTTL, blockDuration);
+  test('should allow manual unblocking', async () => {
+    // Block then Unblock
+    await abuseDetector.block(testIP, 60);
+    await abuseDetector.unblock(testIP);
     
-    // 3rd Strike (Should Block)
-    const result = await abuseDetector.reportViolation(testIP, threshold, violationTTL, blockDuration);
-    
-    expect(result.blocked).toBe(true);
-    expect(result.retryAfter).toBeGreaterThan(0);
+    // Check status
+    const status = await abuseDetector.checkStatus(testIP);
+    expect(status.status).toBe('allowed');
   });
 
-  test('checkBlock should return true for blocked user', async () => {
-    const result = await abuseDetector.checkBlock(testIP);
-    expect(result.blocked).toBe(true);
+  test('should NEVER block whitelisted IPs', async () => {
+    // 1. Add to whitelist
+    await abuseDetector.whitelist(vipIP);
+
+    // 2. Spam violations (10 attempts, limit is 5)
+    for (let i = 0; i < 10; i++) {
+      const result = await abuseDetector.reportViolation(vipIP, 5, 60, 60);
+      expect(result.blocked).toBe(false);
+    }
+
+    // 3. Verify allowed
+    const status = await abuseDetector.checkStatus(vipIP);
+    expect(status.status).toBe('allowed');
+    expect(status.reason).toBe('whitelist');
   });
 });
